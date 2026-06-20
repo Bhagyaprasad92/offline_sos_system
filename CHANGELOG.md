@@ -1,3 +1,7 @@
+## 0.0.5
+
+* Fixed dangling library doc comment lint to ensure perfect pub.dev score.
+
 ## 0.0.4
 
 * Added comprehensive Dartdoc comments to all public API elements for perfect pub.dev scoring.

@@ -1,6 +1,6 @@
 name: offline_sos_system
 description: A pure Dart, offline-first Flutter package for on-device crash and anomaly detection using hardware telemetry and TFLite.
-version: 0.0.4
+version: 0.0.5
 repository: https://github.com/bhagyaprasad92/offline_sos_system
 
 environment:

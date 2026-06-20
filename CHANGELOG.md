@@ -1,8 +1,12 @@
-## 0.0.2
+## 0.0.4
+
+* Added comprehensive Dartdoc comments to all public API elements for perfect pub.dev scoring.
+
+## 0.0.3
 
 * Massive documentation overhaul: Introduced advanced Edge AI architecture guides and high-conversion implementation examples.
 
-## 0.0.1
+## 0.0.2
 
 * Initial release.
 * Extracted the core offline detection engine into a standalone, pure Dart package.

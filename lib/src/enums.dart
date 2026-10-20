@@ -1,11 +1,13 @@
 /// Represents the severity level of a system log.
-enum LogLevel { 
+enum LogLevel {
   /// Informational messages.
-  info, 
+  info,
+
   /// Warnings that do not halt the system.
-  warning, 
+  warning,
+
   /// Critical events such as crashes or system failures.
-  critical 
+  critical,
 }
 
 /// A structured log message emitted by the engine.
@@ -20,5 +22,6 @@ class LogMessage {
   final DateTime timestamp;
 
   /// Creates a [LogMessage] with the given [text] and an optional severity [level].
-  LogMessage(this.text, {this.level = LogLevel.info}) : timestamp = DateTime.now();
+  LogMessage(this.text, {this.level = LogLevel.info})
+    : timestamp = DateTime.now();
 }

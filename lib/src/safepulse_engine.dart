@@ -1,8 +1,10 @@
 // lib/src/safepulse_engine.dart
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'ai_service.dart';
 import 'sensor_service.dart';
 import 'enums.dart';
+import 'crash_detection_config.dart';
 
 /// Represents a discrete anomaly or physical crash detected by the hardware sensors and AI model.
 class CrashEvent {
@@ -13,30 +15,27 @@ class CrashEvent {
   final DateTime timestamp;
 
   /// Creates a [CrashEvent] with the given [probability] and [timestamp].
-  CrashEvent({
-    required this.probability,
-    required this.timestamp,
-  });
+  CrashEvent({required this.probability, required this.timestamp});
 }
 
 /// The core headless engine responsible for orchestrating sensor telemetry and AI inference.
 ///
 /// It listens to the device's accelerometer and gyroscope, buffers the data, and passes
-/// it to the TensorFlow Lite model for crash detection.
+/// it to the TensorFlow Lite model for crash detection according to [detectionConfig].
 class SafePulseEngine {
   /// The optional path to a custom `.tflite` model asset. If null, the default bundled model is used.
   final String? customModelPath;
-  
-  /// Initializes the engine, optionally overriding the underlying AI model via [customModelPath].
-  SafePulseEngine({this.customModelPath}) {
-    _initializeServices();
-  }
+
+  /// The active crash detection configuration policy.
+  final CrashDetectionConfig detectionConfig;
 
   /// The internal AI service responsible for handling TFLite inference.
-  final AIService aiService = AIService();
+  final AIService aiService;
 
   /// The internal sensor service responsible for gathering hardware telemetry.
-  final SensorService sensorService = SensorService();
+  final SensorService sensorService;
+
+  final DateTime Function() _clock;
 
   // Streams
   final _crashStreamController = StreamController<CrashEvent>.broadcast();
@@ -48,7 +47,34 @@ class SafePulseEngine {
   final logStream = StreamController<LogMessage>.broadcast();
 
   bool _isRunning = false;
+  bool _isDisposed = false;
   DateTime? _lastEmergencyTrigger;
+
+  /// Whether the engine is currently running and processing telemetry.
+  bool get isRunning => _isRunning;
+
+  /// Whether the engine has been disposed.
+  bool get isDisposed => _isDisposed;
+
+  /// Initializes the engine with optional custom model asset, detection configuration,
+  /// and injectable services.
+  SafePulseEngine({
+    this.customModelPath,
+    CrashDetectionConfig? detectionConfig,
+    AIService? aiService,
+    SensorService? sensorService,
+    @visibleForTesting DateTime Function()? clock,
+  }) : detectionConfig = detectionConfig ?? const CrashDetectionConfig.raw(),
+       aiService =
+           aiService ??
+           AIService(
+             config: detectionConfig ?? const CrashDetectionConfig.raw(),
+           ),
+       sensorService = sensorService ?? SensorService(),
+       _clock = clock ?? DateTime.now {
+    this.detectionConfig.validate();
+    _initializeServices();
+  }
 
   void _initializeServices() {
     // Bind loggers
@@ -56,10 +82,12 @@ class SafePulseEngine {
     sensorService.onLog = (msg) => log(msg, level: LogLevel.info);
 
     sensorService.onRawData = (data) {
+      if (_isDisposed) return;
       aiService.addData(data);
     };
 
     aiService.onCrashDetected = (probability) {
+      if (_isDisposed) return;
       _handleCrash(probability);
     };
 
@@ -69,11 +97,19 @@ class SafePulseEngine {
 
   /// Dispatches a log [message] with the specified [level] to the [logStream].
   void log(String message, {LogLevel level = LogLevel.info}) {
+    if (_isDisposed || logStream.isClosed) return;
     logStream.add(LogMessage(message, level: level));
   }
 
   /// Starts the engine. It will begin gathering sensor telemetry and evaluating it against the AI model.
+  ///
+  /// Throws a [StateError] if called after the engine has been disposed.
   Future<void> start() async {
+    if (_isDisposed) {
+      throw StateError(
+        'Cannot start SafePulseEngine after it has been disposed.',
+      );
+    }
     if (_isRunning) return;
     _isRunning = true;
 
@@ -91,26 +127,35 @@ class SafePulseEngine {
   }
 
   void _handleCrash(double probability) {
-    if (_lastEmergencyTrigger != null) {
-      final diff = DateTime.now().difference(_lastEmergencyTrigger!);
-      if (diff.inSeconds < 30) {
+    if (_isDisposed || _crashStreamController.isClosed) return;
+
+    if (_lastEmergencyTrigger != null &&
+        detectionConfig.cooldown > Duration.zero) {
+      final diff = _clock().difference(_lastEmergencyTrigger!);
+      if (diff < detectionConfig.cooldown) {
         return;
       }
     }
 
-    _lastEmergencyTrigger = DateTime.now();
+    _lastEmergencyTrigger = _clock();
     log("🚀 CRASH DETECTED AUTONOMOUSLY BY AI!", level: LogLevel.critical);
-    
-    _crashStreamController.add(CrashEvent(
-      probability: probability,
-      timestamp: DateTime.now(),
-    ));
+
+    _crashStreamController.add(
+      CrashEvent(probability: probability, timestamp: _lastEmergencyTrigger!),
+    );
   }
 
-  /// Disposes of the engine resources, closing all active streams and the AI interpreter.
+  /// Disposes of the engine resources, closing all active streams, stopping sensor
+  /// telemetry, and shutting down the AI interpreter.
+  ///
+  /// This operation is idempotent. Calling it multiple times is safe.
   void dispose() {
-    logStream.close();
-    _crashStreamController.close();
+    if (_isDisposed) return;
+    _isDisposed = true;
+    _isRunning = false;
+    unawaited(sensorService.stop());
     aiService.dispose();
+    _crashStreamController.close();
+    logStream.close();
   }
 }

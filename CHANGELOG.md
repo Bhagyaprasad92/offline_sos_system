@@ -1,3 +1,10 @@
+## 0.0.6
+
+* **Configurable Crash Detection:** Introduced `CrashDetectionConfig` to allow custom thresholds for the sensor impact gate (`impactThresholdG`), minimum model confidence probability (`minCrashProbability`), fallback impact threshold (`fallbackImpactThresholdG`), and duplicate suppression cooldown (`cooldown`).
+* **Backward Compatibility:** Preserved all existing default behaviors (3.0 G impact gate, 0.25 probability, 5.0 G fallback, 30s cooldown). Applications calling `SafePulseEngine()` without arguments continue to behave identically.
+* **Lifecycle & Reliability Improvements:** Fixed engine disposal to properly cancel active sensor subscriptions and timers, guarded stream controllers against post-disposal emissions, prevented restarted sensor retries after stop, and ensured idempotent disposal.
+* **Comprehensive Automated Tests:** Added full test coverage for configuration validation, exact threshold boundaries, offline fallback heuristics, duplicate suppression, and engine lifecycle.
+
 ## 0.0.5
 
 * Fixed dangling library doc comment lint to ensure perfect pub.dev score.
